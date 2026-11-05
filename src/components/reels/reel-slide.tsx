@@ -27,6 +27,13 @@ export function ReelSlide({
   const { user } = useSession();
   const router = useRouter();
   const [liked, setLiked] = useState(false);
+  const specs = [
+    formatMileage(listing.mileageKm),
+    listing.fuel ? FUEL_LABEL[listing.fuel] : null,
+    listing.transmission ? TRANSMISSION_LABEL[listing.transmission] : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   function onLike() {
     if (!user) {
@@ -50,16 +57,15 @@ export function ReelSlide({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black via-black/75 to-transparent px-4 pt-28 pb-[max(4.75rem,env(safe-area-inset-bottom))]">
         <div className="pointer-events-auto max-w-[80%]">
           <p className="text-2xl font-semibold tracking-tight text-amber-300">
-            {formatPrice(listing.price)}
+            {formatPrice(listing.price, listing.currency)}
           </p>
           <h2 className="mt-1 text-xl font-semibold">
             {listing.title}{" "}
-            <span className="text-base font-normal text-white/70">{listing.year}</span>
+            {listing.year ? (
+              <span className="text-base font-normal text-white/70">{listing.year}</span>
+            ) : null}
           </h2>
-          <p className="mt-1 text-sm text-white/80">
-            {formatMileage(listing.mileageKm)} · {FUEL_LABEL[listing.fuel]} ·{" "}
-            {TRANSMISSION_LABEL[listing.transmission]}
-          </p>
+          {specs ? <p className="mt-1 text-sm text-white/80">{specs}</p> : null}
           <p className="mt-1 text-sm text-white/70">{listing.location}</p>
           <p className="mt-2 text-sm text-white/55">
             {listing.seller.name} · {SELLER_KIND_LABEL[listing.seller.kind]}

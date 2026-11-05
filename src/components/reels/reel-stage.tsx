@@ -127,14 +127,17 @@ function ListingSheet({
     setNote("Чат ещё не подключён — он появится вместе с бекендом.");
   }
 
-  const specs = [
-    ["Год", String(listing.year)],
-    ["Пробег", formatMileage(listing.mileageKm)],
-    ["Топливо", FUEL_LABEL[listing.fuel]],
-    ["Коробка", TRANSMISSION_LABEL[listing.transmission]],
-    ["Город", listing.location],
-    ["Продавец", `${listing.seller.name}, ${SELLER_KIND_LABEL[listing.seller.kind]}`],
-  ];
+  const published = formatDate(listing.createdAt);
+  const specs = (
+    [
+      ["Год", listing.year ? String(listing.year) : null],
+      ["Пробег", formatMileage(listing.mileageKm)],
+      ["Топливо", listing.fuel ? FUEL_LABEL[listing.fuel] : null],
+      ["Коробка", listing.transmission ? TRANSMISSION_LABEL[listing.transmission] : null],
+      ["Город", listing.location || null],
+      ["Продавец", `${listing.seller.name}, ${SELLER_KIND_LABEL[listing.seller.kind]}`],
+    ] satisfies [string, string | null][]
+  ).filter((spec): spec is [string, string] => spec[1] !== null);
 
   return (
     <div className="absolute inset-0 z-40 flex flex-col justify-end bg-black/50" onClick={onClose}>
@@ -145,7 +148,9 @@ function ListingSheet({
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/20" />
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xl font-semibold text-amber-300">{formatPrice(listing.price)}</p>
+            <p className="text-xl font-semibold text-amber-300">
+              {formatPrice(listing.price, listing.currency)}
+            </p>
             <h2 className="mt-1 text-lg font-semibold">{listing.title}</h2>
           </div>
           <button type="button" onClick={onClose} className="text-sm text-white/70" aria-label="Закрыть">
@@ -163,7 +168,7 @@ function ListingSheet({
         {listing.description ? (
           <p className="mt-4 text-sm leading-6 text-white/80">{listing.description}</p>
         ) : null}
-        <p className="mt-3 text-xs text-white/40">Опубликовано {formatDate(listing.createdAt)}</p>
+        {published ? <p className="mt-3 text-xs text-white/40">Опубликовано {published}</p> : null}
         <button
           type="button"
           onClick={onContact}

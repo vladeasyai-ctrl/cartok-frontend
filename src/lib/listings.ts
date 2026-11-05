@@ -2,11 +2,14 @@ import "server-only";
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { backendConfigured, fetchFeed, fetchListing, fetchListings } from "@/lib/backend";
+import { preferUnseen } from "@/lib/feed-rank";
 import { createLock } from "@/lib/lock";
 import type { CreateListingInput, Listing, PublicUser } from "@/lib/types";
 
 /**
- * Объявления: постоянные примеры в коде + созданные пользователем в data/listings.json.
+ * Объявления: созданные пользователем в data/listings.json + каталог из Spring-бекенда (CARTOK_API_URL).
+ * Без CARTOK_API_URL вместо каталога используются постоянные примеры в коде.
  * Загрузка своих фото здесь намеренно не делается — для неё нужен object storage (на Vercel это Blob).
  */
 
@@ -176,18 +179,28 @@ async function persist(listings: Listing[]) {
   await writeFile(filePath, JSON.stringify(listings, null, 2), "utf8");
 }
 
-export function listListings() {
-  return locked(async () => {
-    const created = await readCreated();
-    return [...created].reverse().concat(SEED);
-  });
+function newestCreated() {
+  return locked(async () => [...(await readCreated())].reverse());
 }
 
-export function getListing(id: string) {
-  return locked(async () => {
-    const created = await readCreated();
-    return created.find((listing) => listing.id === id) ?? SEED.find((listing) => listing.id === id) ?? null;
-  });
+export async function listListings(): Promise<Listing[]> {
+  const created = await newestCreated();
+  return created.concat(backendConfigured() ? await fetchListings() : SEED);
+}
+
+/** Бекенд уже отфильтровал просмотренные; preferUnseen домешивает к ним локально созданные. */
+export async function feedListings(seenIds: string[]): Promise<Listing[]> {
+  const created = await newestCreated();
+  const remote = backendConfigured() ? await fetchFeed(seenIds) : SEED;
+  return preferUnseen(created.concat(remote), seenIds);
+}
+
+export async function getListing(id: string): Promise<Listing | null> {
+  const created = await newestCreated();
+  const local = created.find((listing) => listing.id === id);
+  if (local) return local;
+  if (backendConfigured()) return fetchListing(id);
+  return SEED.find((listing) => listing.id === id) ?? null;
 }
 
 export function createListing(input: CreateListingInput, seller: PublicUser) {

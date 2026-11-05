@@ -4,8 +4,12 @@ import { readSessionUserId } from "@/lib/session-cookie";
 import { parseListing } from "@/lib/validate";
 
 export async function GET() {
-  const listings = await listListings();
-  return Response.json({ listings });
+  try {
+    return Response.json({ listings: await listListings() });
+  } catch (error) {
+    console.error("listings", error);
+    return Response.json({ error: "Каталог недоступен" }, { status: 502 });
+  }
 }
 
 export async function POST(request: Request) {

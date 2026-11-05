@@ -59,7 +59,7 @@ export function AccountScreen() {
                 {mine.map((listing) => (
                   <li key={listing.id}>
                     <TextLink href={`/listing/${listing.id}`}>
-                      {listing.title} · {formatPrice(listing.price)}
+                      {listing.title} · {formatPrice(listing.price, listing.currency)}
                     </TextLink>
                   </li>
                 ))}

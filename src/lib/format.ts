@@ -25,14 +25,21 @@ export const SELLER_KIND_LABEL: Record<SellerKind, string> = {
   dealer: "дилер",
 };
 
-export function formatPrice(amount: number): string {
-  return `${priceFormat.format(amount)} zł`;
+const CURRENCY_SIGN: Record<string, string> = {
+  PLN: "zł",
+  EUR: "€",
+  USD: "$",
+};
+
+export function formatPrice(amount: number | null, currency = "PLN"): string {
+  if (amount === null) return "Цена не указана";
+  return `${priceFormat.format(amount)} ${CURRENCY_SIGN[currency] ?? currency}`;
 }
 
-export function formatMileage(km: number): string {
-  return `${mileageFormat.format(km)} км`;
+export function formatMileage(km: number | null): string | null {
+  return km === null ? null : `${mileageFormat.format(km)} км`;
 }
 
-export function formatDate(iso: string): string {
-  return dateFormat.format(new Date(iso));
+export function formatDate(iso: string | null): string | null {
+  return iso ? dateFormat.format(new Date(iso)) : null;
 }

@@ -36,10 +36,6 @@ yarn-error.log*
 
 # local stand-in for the future backend
 /data
-
-# backend lives in its own git repo
-/backend
-
 # ide
 /.idea
 

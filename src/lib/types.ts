@@ -21,22 +21,23 @@ export type Seller = {
   kind: SellerKind;
 };
 
+/** null — источник (otomoto) не сообщил значение. */
 export type Listing = {
   id: string;
   title: string;
   make: string;
   model: string;
-  year: number;
-  price: number;
-  currency: "PLN";
-  mileageKm: number;
-  fuel: Fuel;
-  transmission: Transmission;
+  year: number | null;
+  price: number | null;
+  currency: string;
+  mileageKm: number | null;
+  fuel: Fuel | null;
+  transmission: Transmission | null;
   location: string;
   description: string;
   images: string[];
   seller: Seller;
-  createdAt: string;
+  createdAt: string | null;
 };
 
 export type CreateListingInput = {

@@ -5,7 +5,12 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
-  const listing = await getListing(id);
-  if (!listing) return Response.json({ error: "Объявление не найдено" }, { status: 404 });
-  return Response.json({ listing });
+  try {
+    const listing = await getListing(id);
+    if (!listing) return Response.json({ error: "Объявление не найдено" }, { status: 404 });
+    return Response.json({ listing });
+  } catch (error) {
+    console.error("listing", error);
+    return Response.json({ error: "Объявление недоступно" }, { status: 502 });
+  }
 }
