@@ -13,8 +13,14 @@ export async function POST(request: Request) {
   const parsed = parseRegister(body);
   if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
 
-  const result = await registerUser(parsed.data);
-  if (!result.ok) return Response.json({ error: result.error }, { status: 409 });
+  let result;
+  try {
+    result = await registerUser(parsed.data);
+  } catch (error) {
+    console.error("register", error);
+    return Response.json({ error: "Регистрация временно недоступна" }, { status: 502 });
+  }
+  if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
 
   await setSessionCookie(result.user.id);
   return Response.json({ user: result.user }, { status: 201 });

@@ -21,7 +21,10 @@ export function preferUnseen(listings: Listing[], seenIds: string[]): Listing[] 
 
 const seenIdPattern = /^[A-Za-z0-9_-]{1,80}$/;
 
-export function parseSeenParam(value: string | null, limit = 20): string[] {
+/** Совпадает с SEEN_LIMIT в ListingController: уже показанные id уходят в догрузку. */
+export const SEEN_PARAM_LIMIT = 80;
+
+export function parseSeenParam(value: string | null, limit = SEEN_PARAM_LIMIT): string[] {
   if (!value) return [];
   const ids: string[] = [];
   for (const part of value.split(",")) {

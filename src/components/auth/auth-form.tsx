@@ -8,6 +8,12 @@ import { safeNext } from "@/lib/navigation";
 import { parseLogin, parseRegister } from "@/lib/validate";
 import type { PublicUser } from "@/lib/types";
 
+function googleError(code: string | null): string | null {
+  if (code === "google") return "Не удалось войти через Google";
+  if (code === "google_config") return "Вход через Google ещё не настроен";
+  return null;
+}
+
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -16,7 +22,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(googleError(params.get("error")));
   const [pending, setPending] = useState(false);
   const isRegister = mode === "register";
 
@@ -63,6 +69,13 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         <p className="text-sm leading-6 text-white/60">
           Объявления о машинах листаются как рилсы: одно объявление на весь экран, фото сменяются сами.
         </p>
+        <a
+          href={`/api/auth/google?next=${encodeURIComponent(next)}`}
+          className="rounded-2xl px-4 py-3 text-center text-sm font-semibold text-white ring-1 ring-white/20"
+        >
+          Войти через Google
+        </a>
+        <p className="text-center text-xs text-white/40">или по email</p>
         {isRegister ? (
           <Field label="Имя">
             <input

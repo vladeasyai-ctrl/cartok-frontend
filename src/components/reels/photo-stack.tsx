@@ -1,8 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const PHOTO_MS = 3200;
+/** Насколько горизонтальный кадр отъезжает от «заполнить экран» к «показать фото целиком». */
+const PULL_BACK = 0.8;
+const MIN_HEIGHT_RATIO = 0.4;
+
+function fitPhoto(frameW: number, frameH: number, imageW: number, imageH: number) {
+  const imageRatio = imageW / imageH;
+  const frameRatio = frameW / frameH;
+  if (imageRatio <= frameRatio * 1.08) {
+    return { width: frameW, height: frameH, inset: false };
+  }
+  const containH = frameW / imageRatio;
+  const pulled = frameH + (containH - frameH) * PULL_BACK;
+  const height = Math.min(frameH, Math.max(pulled, frameH * MIN_HEIGHT_RATIO));
+  return { width: height * imageRatio, height, inset: true };
+}
 
 export function PhotoStack({
   images,
@@ -13,13 +28,30 @@ export function PhotoStack({
   alt: string;
   active: boolean;
 }) {
+  const frameRef = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [frame, setFrame] = useState({ w: 0, h: 0 });
+  const [natural, setNatural] = useState<Record<number, { w: number; h: number }>>({});
   const safeIndex = images.length ? index % images.length : 0;
 
   function show(next: number) {
     setIndex(next);
   }
+
+  useEffect(() => {
+    const element = frameRef.current;
+    if (!element) return;
+    const apply = () => {
+      const w = element.clientWidth;
+      const h = element.clientHeight;
+      setFrame((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!paused) return;
@@ -68,20 +100,53 @@ export function PhotoStack({
   const canAnimate = active && images.length > 1;
 
   return (
-    <div className="absolute inset-0 bg-zinc-900">
-        {images.map((src, imageIndex) => (
-          // Обычный img: адреса фото потом придут с произвольного хранилища, а next/image режет неизвестные хосты.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={`${src}-${imageIndex}`}
-            src={src}
-            alt={imageIndex === safeIndex ? alt : ""}
-            draggable={false}
-            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${
-              imageIndex === safeIndex ? "opacity-100" : "opacity-0"
-            }`}
-          />
-        ))}
+    <div ref={frameRef} className="absolute inset-0 bg-black">
+        {images.map((src, imageIndex) => {
+          const known = natural[imageIndex];
+          const box = known && frame.w > 0 && frame.h > 0 ? fitPhoto(frame.w, frame.h, known.w, known.h) : null;
+          const visible = imageIndex === safeIndex && box;
+          return (
+            // Обычный img: адреса фото потом придут с произвольного хранилища, а next/image режет неизвестные хосты.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={`${src}-${imageIndex}`}
+              src={src}
+              alt={imageIndex === safeIndex ? alt : ""}
+              draggable={false}
+              onLoad={(event) => {
+                const img = event.currentTarget;
+                if (!img.naturalWidth) return;
+                setNatural((prev) => {
+                  const size = prev[imageIndex];
+                  if (size?.w === img.naturalWidth && size.h === img.naturalHeight) return prev;
+                  return { ...prev, [imageIndex]: { w: img.naturalWidth, h: img.naturalHeight } };
+                });
+              }}
+              className={`absolute max-w-none transition-opacity duration-500 ${
+                visible ? "opacity-100" : "opacity-0"
+              }`}
+              style={
+                box
+                  ? {
+                      width: box.width,
+                      height: box.height,
+                      left: "50%",
+                      top: box.inset ? "46%" : "50%",
+                      transform: "translate(-50%, -50%)",
+                      maskImage: box.inset
+                        ? "linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%)"
+                        : undefined,
+                      WebkitMaskImage: box.inset
+                        ? "linear-gradient(to bottom, transparent 0%, #000 14%, #000 86%, transparent 100%)"
+                        : undefined,
+                    }
+                  : { width: "100%", height: "100%", left: 0, top: 0 }
+              }
+            />
+          );
+        })}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[12] h-36 bg-gradient-to-b from-black/70 via-black/25 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[12] h-[38%] bg-gradient-to-t from-black/70 via-black/25 to-transparent" />
       <div
         className="absolute inset-0 z-10"
         data-x="0"

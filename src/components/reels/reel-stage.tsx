@@ -13,6 +13,7 @@ import {
   SELLER_KIND_LABEL,
   TRANSMISSION_LABEL,
 } from "@/lib/format";
+import { flushActivity, trackOpen, trackView } from "@/lib/activity";
 import { markSeen, SEEN_AFTER_MS } from "@/lib/seen-queue";
 import type { Listing } from "@/lib/types";
 
@@ -20,16 +21,30 @@ export function ReelStage({
   listings,
   returnTo,
   backHref,
+  suspended = false,
+  reserveNav = false,
+  onNearEnd,
+  onSettings,
 }: {
   listings: Listing[];
   returnTo: string;
   backHref?: string;
+  suspended?: boolean;
+  reserveNav?: boolean;
+  onNearEnd?: () => void;
+  onSettings?: () => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const slidesRef = useRef<(HTMLElement | null)[]>([]);
   const [active, setActive] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const open = listings.find((listing) => listing.id === openId) ?? null;
+
+  useEffect(() => {
+    if (suspended || !onNearEnd || listings.length === 0) return;
+    if (active < listings.length - 3) return;
+    onNearEnd();
+  }, [active, listings.length, onNearEnd, suspended]);
 
   useEffect(() => {
     const root = scrollerRef.current;
@@ -51,14 +66,35 @@ export function ReelStage({
     return () => observer.disconnect();
   }, [listings]);
 
+  /** Время на экране считается, пока карточка активна, лист подробностей закрыт и вкладка видна. */
   useEffect(() => {
     const listing = listings[active];
-    if (!listing || open) return;
+    if (!listing || open || suspended) return;
     const timer = window.setTimeout(() => markSeen(listing.id), SEEN_AFTER_MS);
-    return () => window.clearTimeout(timer);
-  }, [active, listings, open]);
+    let startedAt: number | null = document.visibilityState === "visible" ? performance.now() : null;
+    function stop() {
+      if (startedAt === null || !listing) return;
+      trackView(listing.id, performance.now() - startedAt);
+      startedAt = null;
+    }
+    function onVisibility() {
+      if (document.visibilityState === "hidden") {
+        stop();
+        flushActivity(true);
+      } else if (startedAt === null) {
+        startedAt = performance.now();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
+  }, [active, listings, open, suspended]);
 
   useEffect(() => {
+    if (suspended) return;
     function onKey(event: KeyboardEvent) {
       const target = event.target;
       if (target instanceof HTMLElement && target.closest("input, textarea, select")) return;
@@ -73,11 +109,11 @@ export function ReelStage({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active]);
+  }, [active, suspended]);
 
   return (
     <div className="relative h-full select-none">
-      <AppHeader overlay backHref={backHref} />
+      <AppHeader overlay backHref={backHref} onSettings={onSettings} />
       <div
         ref={scrollerRef}
         className={`reel-scroller h-full snap-y snap-mandatory ${
@@ -94,9 +130,13 @@ export function ReelStage({
           >
             <ReelSlide
               listing={listing}
-              active={index === active && !open}
+              active={index === active && !open && !suspended}
               returnTo={returnTo}
-              onOpen={() => setOpenId(listing.id)}
+              reserveNav={reserveNav}
+              onOpen={() => {
+                setOpenId(listing.id);
+                trackOpen(listing.id);
+              }}
             />
           </div>
         ))}
@@ -104,6 +144,18 @@ export function ReelStage({
       {open ? <ListingSheet listing={open} returnTo={returnTo} onClose={() => setOpenId(null)} /> : null}
     </div>
   );
+}
+
+function siteHref(listing: Listing) {
+  if (listing.sourceUrl) {
+    try {
+      const url = new URL(listing.sourceUrl);
+      if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
+    } catch {
+      /* ссылка источника битая — открываем страницу объявления */
+    }
+  }
+  return `/listing/${listing.id}`;
 }
 
 function ListingSheet({
@@ -165,6 +217,14 @@ function ListingSheet({
             </div>
           ))}
         </dl>
+        <a
+          href={siteHref(listing)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex rounded-2xl bg-white/10 px-4 py-2.5 text-sm font-medium"
+        >
+          Открыть на сайте
+        </a>
         {listing.description ? (
           <p className="mt-4 text-sm leading-6 text-white/80">{listing.description}</p>
         ) : null}

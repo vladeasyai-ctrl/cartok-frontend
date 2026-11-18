@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/components/session-provider";
 import { PhotoStack } from "@/components/reels/photo-stack";
+import { trackLike } from "@/lib/activity";
 import {
+  formatDate,
   formatMileage,
   formatPrice,
   FUEL_LABEL,
@@ -18,15 +20,17 @@ export function ReelSlide({
   active,
   returnTo,
   onOpen,
+  reserveNav = false,
 }: {
   listing: Listing;
   active: boolean;
   returnTo: string;
   onOpen: () => void;
+  reserveNav?: boolean;
 }) {
   const { user } = useSession();
   const router = useRouter();
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(listing.liked ?? false);
   const specs = [
     formatMileage(listing.mileageKm),
     listing.fuel ? FUEL_LABEL[listing.fuel] : null,
@@ -34,13 +38,16 @@ export function ReelSlide({
   ]
     .filter(Boolean)
     .join(" · ");
+  const published = formatDate(listing.createdAt);
 
   function onLike() {
     if (!user) {
       router.push(`/login?next=${encodeURIComponent(returnTo)}`);
       return;
     }
-    setLiked((value) => !value);
+    const next = !liked;
+    setLiked(next);
+    trackLike(listing.id, next);
   }
 
   return (
@@ -54,7 +61,13 @@ export function ReelSlide({
         alt={listing.title}
         active={active}
       />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black via-black/75 to-transparent px-4 pt-28 pb-[max(4.75rem,env(safe-area-inset-bottom))]">
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-4 pt-24 ${
+          reserveNav
+            ? "pb-[calc(env(safe-area-inset-bottom)+4.5rem)]"
+            : "pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+        }`}
+      >
         <div className="pointer-events-auto max-w-[80%]">
           <p className="text-2xl font-semibold tracking-tight text-amber-300">
             {formatPrice(listing.price, listing.currency)}
@@ -70,6 +83,7 @@ export function ReelSlide({
           <p className="mt-2 text-sm text-white/55">
             {listing.seller.name} · {SELLER_KIND_LABEL[listing.seller.kind]}
           </p>
+          {published ? <p className="mt-1 text-sm text-white/55">Опубликовано {published}</p> : null}
           <button type="button" onClick={onOpen} className="mt-3 text-sm font-medium text-white underline">
             Подробнее
           </button>

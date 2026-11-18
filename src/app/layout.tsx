@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
+import { BackendGate } from "@/components/backend-gate";
 import { SessionProvider } from "@/components/session-provider";
 import "./globals.css";
 
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="ru" className={`${sans.variable} h-full`}>
       <body className="min-h-full bg-zinc-900 font-sans text-zinc-50 antialiased">
         <div className="mx-auto h-dvh w-full max-w-[480px] overflow-hidden bg-black sm:border-x sm:border-white/10">
-          <SessionProvider>{children}</SessionProvider>
+          <BackendGate>
+            <SessionProvider>{children}</SessionProvider>
+          </BackendGate>
         </div>
       </body>
     </html>

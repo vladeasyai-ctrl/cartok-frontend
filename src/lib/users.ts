@@ -1,109 +1,59 @@
 import "server-only";
 
-import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { promisify } from "node:util";
-import { createLock } from "@/lib/lock";
+import { backendFetch } from "@/lib/backend";
 import type { PublicUser } from "@/lib/types";
 
-/**
- * Временное хранилище пользователей в data/users.json.
- * На Vercel файлы между вызовами не сохраняются — этот модуль заменится клиентом бекенда.
- */
+/** Пользователи живут в Spring-бекенде (pl.cartok.user), сессию по-прежнему подписывает Next. */
 
-const scryptAsync = promisify(scrypt);
-const locked = createLock();
-const filePath = path.join(process.cwd(), "data", "users.json");
+type UserResponse = { user?: PublicUser; error?: string };
 
-type StoredUser = PublicUser & { passwordHash: string };
-
-export function toPublic(user: StoredUser): PublicUser {
-  return { id: user.id, email: user.email, name: user.name };
-}
-
-async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16).toString("hex");
-  const hash = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${salt}:${hash.toString("hex")}`;
-}
-
-export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [salt, key] = stored.split(":");
-  if (!salt || !key) return false;
-  const hash = (await scryptAsync(password, salt, 64)) as Buffer;
-  const keyBuffer = Buffer.from(key, "hex");
-  if (hash.length !== keyBuffer.length) return false;
-  return timingSafeEqual(hash, keyBuffer);
-}
-
-async function persist(users: StoredUser[]) {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify(users, null, 2), "utf8");
-}
-
-async function load(): Promise<StoredUser[]> {
+async function readUser(response: Response): Promise<UserResponse> {
   try {
-    const raw = await readFile(filePath, "utf8");
-    const parsed = JSON.parse(raw) as StoredUser[];
-    if (!Array.isArray(parsed)) throw new Error("users store is not an array");
-    return parsed;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "ENOENT") throw error;
-    const demo = await buildUser({
-      id: "user_demo",
-      email: "demo@cartok.dev",
-      name: "Демо",
-      password: "demo1234",
-    });
-    await persist([demo]);
-    return [demo];
+    return (await response.json()) as UserResponse;
+  } catch {
+    return {};
   }
 }
 
-async function buildUser(input: {
-  id: string;
-  email: string;
-  name: string;
-  password: string;
-}): Promise<StoredUser> {
-  return {
-    id: input.id,
-    email: input.email,
-    name: input.name,
-    passwordHash: await hashPassword(input.password),
-  };
+function unexpected(path: string, response: Response): Error {
+  return new Error(`backend ${path}: ${response.status}`);
 }
 
-export function findUserByEmail(email: string) {
-  return locked(async () => {
-    const users = await load();
-    return users.find((user) => user.email === email) ?? null;
-  });
+export async function findUserById(id: string): Promise<PublicUser | null> {
+  const path = `/api/users/${encodeURIComponent(id)}`;
+  const response = await backendFetch(path);
+  if (response.status === 404) return null;
+  if (!response.ok) throw unexpected(path, response);
+  return (await readUser(response)).user ?? null;
 }
 
-export function findUserById(id: string) {
-  return locked(async () => {
-    const users = await load();
-    return users.find((user) => user.id === id) ?? null;
-  });
+export async function loginUser(input: { email: string; password: string }): Promise<PublicUser | null> {
+  const path = "/api/users/login";
+  const response = await backendFetch(path, { method: "POST", body: input });
+  if (response.status === 401) return null;
+  if (!response.ok) throw unexpected(path, response);
+  return (await readUser(response)).user ?? null;
 }
 
-export function registerUser(input: { email: string; password: string; name: string }) {
-  return locked(async () => {
-    const users = await load();
-    if (users.some((user) => user.email === input.email)) {
-      return { ok: false as const, error: "Такой email уже зарегистрирован" };
-    }
-    const user = await buildUser({
-      id: `user_${crypto.randomUUID()}`,
-      email: input.email,
-      name: input.name,
-      password: input.password,
-    });
-    users.push(user);
-    await persist(users);
-    return { ok: true as const, user: toPublic(user) };
-  });
+/** Next уже проверил id_token Google. Бекенд только находит или создаёт пользователя. */
+export async function loginWithGoogle(input: { sub: string; email: string; name: string }) {
+  const path = "/api/users/google";
+  const response = await backendFetch(path, { method: "POST", body: { ...input, emailVerified: true } });
+  const data = await readUser(response);
+  if (response.status === 409 || response.status === 400 || response.status === 401) {
+    return { ok: false as const, error: data.error ?? "Не удалось войти через Google" };
+  }
+  if (!response.ok || !data.user) throw unexpected(path, response);
+  return { ok: true as const, user: data.user };
+}
+
+export async function registerUser(input: { email: string; password: string; name: string }) {
+  const path = "/api/users";
+  const response = await backendFetch(path, { method: "POST", body: input });
+  const data = await readUser(response);
+  if (response.status === 409 || response.status === 400) {
+    return { ok: false as const, status: response.status, error: data.error ?? "Не удалось зарегистрироваться" };
+  }
+  if (!response.ok || !data.user) throw unexpected(path, response);
+  return { ok: true as const, user: data.user };
 }

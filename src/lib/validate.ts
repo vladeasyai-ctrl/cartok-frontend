@@ -1,5 +1,20 @@
-import type { CreateListingInput, Fuel, Transmission } from "@/lib/types";
-import { FUELS, TRANSMISSIONS } from "@/lib/types";
+import type {
+  ActivityEvent,
+  ActivityKind,
+  CreateListingInput,
+  Fuel,
+  PreferenceChoice,
+  Preferences,
+  Transmission,
+} from "@/lib/types";
+import {
+  ACTIVITY_BATCH_LIMIT,
+  ACTIVITY_KINDS,
+  CHOICES_PER_PRIORITY,
+  FUELS,
+  PRIORITY_COUNT,
+  TRANSMISSIONS,
+} from "@/lib/types";
 
 export type Parsed<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -110,6 +125,110 @@ export function parseListing(body: unknown): Parsed<CreateListingInput> {
       description,
       fuel: fuel as Fuel,
       transmission: transmission as Transmission,
+    },
+  };
+}
+
+const activityKinds = new Set<string>(ACTIVITY_KINDS);
+const listingIdPattern = /^[A-Za-z0-9_-]{1,80}$/;
+const MAX_DWELL_MS = 10 * 60 * 1000;
+
+/** Битые события отбрасываются поштучно: это статистика, из-за одного не стоит терять пачку. */
+export function parseActivity(body: unknown): Parsed<ActivityEvent[]> {
+  const record = asRecord(body);
+  if (!record || !Array.isArray(record.events) || record.events.length > ACTIVITY_BATCH_LIMIT) {
+    return { ok: false, error: "Некорректный запрос" };
+  }
+  const events: ActivityEvent[] = [];
+  for (const item of record.events) {
+    const event = asRecord(item);
+    if (!event || typeof event.listingId !== "string" || !listingIdPattern.test(event.listingId)) continue;
+    if (typeof event.kind !== "string" || !activityKinds.has(event.kind)) continue;
+    const kind = event.kind as ActivityKind;
+    if (kind !== "view") {
+      events.push({ listingId: event.listingId, kind });
+      continue;
+    }
+    const dwell = typeof event.dwellMs === "number" && Number.isFinite(event.dwellMs) ? Math.round(event.dwellMs) : 0;
+    if (dwell <= 0) continue;
+    events.push({ listingId: event.listingId, kind, dwellMs: Math.min(dwell, MAX_DWELL_MS) });
+  }
+  return { ok: true, data: events };
+}
+
+/** undefined — значение есть, но вне диапазона. */
+function optionalIntegerIn(value: unknown, min: number, max: number): number | null | undefined {
+  if (value === null || value === undefined) return null;
+  return integerIn(value, min, max) ?? undefined;
+}
+
+function parseRange(
+  record: Record<string, unknown>,
+  fromKey: string,
+  toKey: string,
+  min: number,
+  max: number,
+  label: string,
+): Parsed<{ from: number | null; to: number | null }> {
+  const from = optionalIntegerIn(record[fromKey], min, max);
+  const to = optionalIntegerIn(record[toKey], min, max);
+  if (from === undefined || to === undefined) {
+    return { ok: false, error: `${label}: значение вне диапазона` };
+  }
+  if (from !== null && to !== null && from > to) {
+    return { ok: false, error: `${label}: «от» больше, чем «до»` };
+  }
+  return { ok: true, data: { from, to } };
+}
+
+export function parsePreferences(body: unknown): Parsed<Preferences> {
+  const record = asRecord(body);
+  if (!record || !Array.isArray(record.priorities) || record.priorities.length > PRIORITY_COUNT) {
+    return { ok: false, error: "Некорректный запрос" };
+  }
+
+  const taken = new Set<string>();
+  const priorities: PreferenceChoice[][] = [];
+  for (let index = 0; index < PRIORITY_COUNT; index++) {
+    const raw: unknown = record.priorities[index] ?? [];
+    if (!Array.isArray(raw)) return { ok: false, error: "Некорректный запрос" };
+    const choices: PreferenceChoice[] = [];
+    for (const item of raw) {
+      const choice = asRecord(item);
+      const make = cleanLine(choice?.make, 40);
+      const model = choice?.model === "" || choice?.model == null ? "" : cleanLine(choice.model, 60);
+      if (!make || model === null) return { ok: false, error: "Укажите марку" };
+      const key = `${make.toLowerCase()}\n${model.toLowerCase()}`;
+      if (taken.has(key)) continue;
+      taken.add(key);
+      choices.push({ make, model });
+    }
+    if (choices.length > CHOICES_PER_PRIORITY) {
+      return { ok: false, error: `В приоритете не больше ${CHOICES_PER_PRIORITY} вариантов` };
+    }
+    priorities.push(choices);
+  }
+
+  const rawFuels: unknown[] = Array.isArray(record.fuels) ? record.fuels : [];
+  if (!rawFuels.every((fuel) => typeof fuel === "string" && fuelSet.has(fuel))) {
+    return { ok: false, error: "Неизвестное топливо" };
+  }
+  const fuels = [...new Set(rawFuels as Fuel[])];
+
+  const year = parseRange(record, "yearFrom", "yearTo", 1950, 2035, "Год выпуска");
+  if (!year.ok) return year;
+  const mileage = parseRange(record, "mileageFrom", "mileageTo", 0, 2_000_000, "Пробег");
+  if (!mileage.ok) return mileage;
+
+  return {
+    ok: true,
+    data: {
+      priorities,
+      fuels,
+      yearFrom: year.data.from,
+      yearTo: year.data.to,
+      mileageFrom: mileage.data.from,
+      mileageTo: mileage.data.to,
     },
   };
 }

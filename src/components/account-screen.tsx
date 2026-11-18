@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/components/session-provider";
 import { PageShell, TextLink } from "@/components/page-shell";
 import { formatPrice } from "@/lib/format";
 import type { Listing } from "@/lib/types";
 
-export function AccountScreen() {
+export function AccountScreen({ embedded = false }: { embedded?: boolean }) {
   const { user, ready, setUser } = useSession();
   const router = useRouter();
   const [mine, setMine] = useState<Listing[]>([]);
@@ -40,8 +41,22 @@ export function AccountScreen() {
     router.refresh();
   }
 
-  return (
-    <PageShell title="Профиль">
+  if (embedded && ready && !user) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-lg font-medium">Войдите, чтобы открыть профиль</p>
+        <Link
+          href={`/login?next=${encodeURIComponent("/?tab=profile")}`}
+          className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black"
+        >
+          Войти
+        </Link>
+      </div>
+    );
+  }
+
+  const body = (
+    <>
       {!ready ? <p className="text-sm text-white/60">Загрузка…</p> : null}
       {user ? (
         <div className="flex flex-col gap-6">
@@ -77,6 +92,17 @@ export function AccountScreen() {
       ) : ready ? (
         <TextLink href="/login?next=/me">Войти</TextLink>
       ) : null}
-    </PageShell>
+    </>
   );
+
+  if (embedded) {
+    return (
+      <div className="h-full overflow-y-auto px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-8">
+        <h1 className="mb-5 text-2xl font-semibold tracking-tight">Профиль</h1>
+        {body}
+      </div>
+    );
+  }
+
+  return <PageShell title="Профиль">{body}</PageShell>;
 }

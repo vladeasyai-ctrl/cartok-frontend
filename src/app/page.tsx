@@ -1,9 +1,12 @@
-import { FeedScreen } from "@/components/reels/feed-screen";
+import { Suspense } from "react";
+import { HomeShell } from "@/components/home-shell";
 
 export default function HomePage() {
   return (
     <div className="h-full">
-      <FeedScreen />
+      <Suspense fallback={<div className="h-full bg-black" />}>
+        <HomeShell />
+      </Suspense>
     </div>
   );
 }

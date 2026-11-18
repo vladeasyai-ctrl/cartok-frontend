@@ -2,15 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useBackendReady } from "@/components/backend-gate";
 import { ReelStage } from "@/components/reels/reel-stage";
 import { ScreenStatus } from "@/components/page-shell";
 import type { Listing } from "@/lib/types";
 
 export function ListingScreen({ id }: { id: string }) {
+  const backendReady = useBackendReady();
   const [listing, setListing] = useState<Listing | null>(null);
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
+    if (!backendReady) return;
     let cancelled = false;
     fetch(`/api/listings/${id}`, { cache: "no-store" })
       .then(async (response) => {
@@ -30,7 +33,7 @@ export function ListingScreen({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, backendReady]);
 
   if (missing) {
     return (

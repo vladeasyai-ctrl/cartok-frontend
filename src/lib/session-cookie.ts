@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import {
   readSession,
   SESSION_COOKIE,
@@ -19,6 +20,11 @@ const cookieOptions = {
 export async function setSessionCookie(userId: string) {
   const jar = await cookies();
   jar.set(SESSION_COOKIE, signSession(userId), cookieOptions);
+}
+
+/** Для ответа-редиректа: cookie(), выставленная рядом с NextResponse.redirect, может не уехать. */
+export function applySessionCookie(response: NextResponse, userId: string) {
+  response.cookies.set(SESSION_COOKIE, signSession(userId), cookieOptions);
 }
 
 export async function clearSessionCookie() {

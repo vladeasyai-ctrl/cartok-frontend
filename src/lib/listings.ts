@@ -189,9 +189,9 @@ export async function listListings(): Promise<Listing[]> {
 }
 
 /** Бекенд уже отфильтровал просмотренные; preferUnseen домешивает к ним локально созданные. */
-export async function feedListings(seenIds: string[]): Promise<Listing[]> {
+export async function feedListings(seenIds: string[], userId: string | null): Promise<Listing[]> {
   const created = await newestCreated();
-  const remote = backendConfigured() ? await fetchFeed(seenIds) : SEED;
+  const remote = backendConfigured() ? await fetchFeed(seenIds, userId) : SEED;
   return preferUnseen(created.concat(remote), seenIds);
 }
 

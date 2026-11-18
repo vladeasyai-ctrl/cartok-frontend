@@ -1,6 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useBackendReady } from "@/components/backend-gate";
+import { setActivityEnabled } from "@/lib/activity";
+import { loadInterestProfile, publishInterestProfile } from "@/lib/interest-profile";
 import type { PublicUser } from "@/lib/types";
 
 type SessionValue = {
@@ -13,6 +16,7 @@ type SessionValue = {
 const SessionContext = createContext<SessionValue | null>(null);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
+  const backendReady = useBackendReady();
   const [user, setUser] = useState<PublicUser | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -29,6 +33,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!backendReady) return;
     let cancelled = false;
     fetch("/api/auth/me", { cache: "no-store" })
       .then(async (response) => {
@@ -51,7 +56,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [backendReady]);
+
+  useEffect(() => {
+    setActivityEnabled(user !== null);
+  }, [user]);
+
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (!userId) return;
+    const saved = loadInterestProfile();
+    if (!saved?.done) return;
+    void publishInterestProfile(saved.profile);
+  }, [userId]);
 
   const value = useMemo(
     () => ({ user, ready, setUser, refresh }),
